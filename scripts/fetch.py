@@ -225,13 +225,34 @@ try:
     cand = re.findall(r"https?://[^\s\"'<>\\]*ie_data[^\s\"'<>\\]*\.xls[^\s\"'<>\\]*", testo)
     cand += re.findall(r"https?://[^\s\"'<>\\]*blobby[^\s\"'<>\\]*\.xls[^\s\"'<>\\]*", testo)
     say("  candidati trovati nella pagina: %d" % len(cand))
+
+    # La pagina e' resa via JavaScript: nell'HTML grezzo il link puo' mancare.
+    # Indirizzi noti, provati in coda a quelli eventualmente trovati.
+    # Se il file venisse spostato, questi falliscono e il manifest lo dichiara:
+    # nessun dato viene mai inventato.
+    NOTI = [
+        "https://img1.wsimg.com/blobby/go/e5e77e0b-59d1-44d9-ab25-4763ac982e53/"
+        "downloads/e27e58c1-8ae0-488c-a976-a298708c7175/ie_data.xls",
+        "http://www.econ.yale.edu/~shiller/data/ie_data.xls",
+        "https://raw.githubusercontent.com/datasets/s-and-p-500/main/data/data.csv",
+    ]
+    cand = list(dict.fromkeys(list(cand) + NOTI))
+    say("  candidati totali da provare: %d" % len(cand))
     if not cand:
-        raise RuntimeError("nessun link .xls nell'HTML grezzo (pagina resa via JS?)")
+        raise RuntimeError("nessun candidato disponibile")
     ultimo = None
     for src in dict.fromkeys(cand):
         try:
             x = requests.get(src, headers=UA, timeout=(10, 90))
             x.raise_for_status()
+            if src.lower().endswith(".csv"):
+                sh = pd.read_csv(io.BytesIO(x.content))
+                sh.to_csv(os.path.join(OUT, "shiller_ie_data.csv"), index=False)
+                say("  OK      shiller (RIPIEGO CSV) %6d righe  (%.1fs)  %s"
+                    % (len(sh), time.time() - t0, src[:60]))
+                say("  ATTENZIONE: ripiego GitHub — utili e CAPE si fermano a meta' 2023.")
+                ultimo = None
+                break
             xl = pd.ExcelFile(io.BytesIO(x.content))
             sh_name = next((s for s in xl.sheet_names if s.strip().lower() == "data"),
                            xl.sheet_names[0])
